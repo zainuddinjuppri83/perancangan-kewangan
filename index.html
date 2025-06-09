@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Papan Pemuka Kewangan Peribadi</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Calm Finance -->
+    <!-- Application Structure Plan: Modified for static hosting (e.g., GitHub Pages). Removed Firebase dependency and switched to localStorage for data persistence. This makes the application a self-contained, single-file SPA that works offline and is easily deployable without a backend. The core UI/UX remains the same, guiding the user through their financial data, but the data source is now the browser's local storage. -->
+    <!-- Visualization & Content Choices: UI and visualization choices are unchanged. Data handling functions (load/save) are rewritten to use localStorage.getItem and localStorage.setItem. The AI feature still functions by sending a summary of the locally-stored data. -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #F8F7F4;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 350px;
+            max-height: 400px;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 400px;
+            }
+        }
+        .card {
+            background-color: #FFFFFF;
+            border-radius: 0.75rem;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -2px rgb(0 0 0 / 0.1);
+        }
+        .progress-bar {
+            background-color: #E5E7EB;
+            border-radius: 9999px;
+            overflow: hidden;
+            height: 1.25rem;
+        }
+        .progress-bar-inner {
+            background-color: #34D399;
+            height: 100%;
+            text-align: center;
+            color: white;
+            font-weight: 500;
+            font-size: 0.75rem;
+            line-height: 1.25rem;
+            border-radius: 9999px;
+            transition: width 0.5s ease-in-out;
+        }
+        .modal-overlay {
+            transition: opacity 0.3s ease;
+        }
+        .modal-content {
+            transition: transform 0.3s ease;
+        }
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="text-gray-800">
+
+    <div class="container mx-auto p-4 sm:p-6 lg:p-8 max-w-7xl">
+
+        <header class="text-center mb-6">
+            <h1 class="text-3xl sm:text-4xl md:text-5xl font-bold text-gray-900">Papan Pemuka Kewangan Anda</h1>
+            <p class="mt-2 text-lg sm:text-xl text-gray-600">Disimpan Selamat di Pelayar Web Anda</p>
+        </header>
+        
+        <div id="loading-overlay" class="fixed inset-0 bg-white z-50 flex flex-col items-center justify-center hidden">
+            <div class="loader"></div>
+            <p class="mt-4 text-gray-600">Memuatkan data anda...</p>
+        </div>
+
+
+        <div class="text-center mb-10 flex flex-wrap justify-center gap-4">
+            <button id="openUpdateModalBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg shadow-md transition-transform transform hover:scale-105">
+                Kemaskini Data
+            </button>
+            <button id="downloadPdfBtn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-6 rounded-lg shadow-md transition-transform transform hover:scale-105">
+                Muat Turun PDF
+            </button>
+            <button id="downloadCsvBtn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-lg shadow-md transition-transform transform hover:scale-105">
+                Muat Turun Excel (CSV)
+            </button>
+        </div>
+
+        <main id="main-content">
+             <!-- User Info Section -->
+            <section id="user-info" class="mb-12">
+                <div class="card p-6 bg-indigo-50 border border-indigo-200">
+                    <h2 class="text-2xl font-bold mb-4 text-indigo-800">Maklumat Pengguna</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+                        <div>
+                            <h3 class="font-semibold text-gray-500">Nama Penuh</h3>
+                            <p id="displayUserName" class="text-lg text-gray-900 font-medium">Memuatkan...</p>
+                        </div>
+                        <div>
+                            <h3 class="font-semibold text-gray-500">No. Kad Pengenalan</h3>
+                            <p id="displayUserIC" class="text-lg text-gray-900 font-medium">Memuatkan...</p>
+                        </div>
+                        <div class="md:col-span-2">
+                            <h3 class="font-semibold text-gray-500">Keterangan</h3>
+                            <p id="displayUserDescription" class="text-base sm:text-lg text-gray-700 italic">Memuatkan...</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Sections remain the same, content will be populated by JS -->
+            <section id="overview" class="mb-12">
+                <h2 class="text-2xl font-bold mb-4 text-gray-800">Gambaran Keseluruhan Bulanan</h2>
+                 <p class="mb-6 text-gray-600">Ini adalah ringkasan kedudukan kewangan anda setiap bulan. Ia memberikan gambaran pantas tentang pendapatan, perbelanjaan, dan lebihan tunai anda.</p>
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <div class="card p-6 flex flex-col justify-between">
+                        <h3 class="font-semibold text-gray-500">Pendapatan Bersih</h3>
+                        <p id="netIncome" class="text-2xl sm:text-3xl font-bold text-green-600 mt-2">RM 0.00</p>
+                    </div>
+                    <div class="card p-6 flex flex-col justify-between">
+                        <h3 class="font-semibold text-gray-500">Jumlah Perbelanjaan</h3>
+                        <p id="totalExpenses" class="text-2xl sm:text-3xl font-bold text-red-600 mt-2">RM 0.00</p>
+                    </div>
+                    <div class="card p-6 flex flex-col justify-between">
+                        <h3 class="font-semibold text-gray-500">Aliran Tunai Lebihan</h3>
+                        <p id="cashFlow" class="text-2xl sm:text-3xl font-bold text-blue-600 mt-2">RM 0.00</p>
+                    </div>
+                    <div class="card p-6 flex flex-col justify-between">
+                        <h3 class="font-semibold text-gray-500">Anggaran Nilai Bersih</h3>
+                        <p id="netWorth" class="text-2xl sm:text-3xl font-bold text-indigo-600 mt-2">RM 0.00</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="budget-analysis" class="mb-12">
+                <h2 class="text-2xl font-bold mb-4 text-gray-800">Analisis Bajet 50/30/20</h2>
+                <p class="mb-6 text-gray-600">Bahagian ini membandingkan perbelanjaan sebenar anda dengan peraturan bajet 50/30/20 yang popular (50% untuk Keperluan, 30% untuk Kehendak, 20% untuk Simpanan). Carta ini membantu anda melihat di mana anda boleh membuat penambahbaikan.</p>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+                    <div class="card p-6">
+                        <div class="chart-container">
+                            <canvas id="budgetComparisonChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="card p-6 bg-blue-50 border border-blue-200">
+                        <h3 class="text-xl font-bold mb-3 text-blue-800">Kad Laporan Kewangan Anda</h3>
+                        <div id="financialReportCard" class="space-y-3 text-blue-700 text-base">
+                        </div>
+                    </div>
+                </div>
+            </section>
+            
+            <section id="expense-details" class="mb-12">
+                <h2 class="text-2xl font-bold mb-4 text-gray-800">Butiran Perbelanjaan</h2>
+                 <p class="mb-6 text-gray-600">Terokai pecahan perbelanjaan bulanan anda. Carta pai menunjukkan agihan perbelanjaan anda mengikut kategori utama, manakala jadual memberikan butiran terperinci bagi setiap item.</p>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+                     <div class="card p-6">
+                        <h3 class="text-xl font-bold mb-4 text-center">Komposisi Perbelanjaan</h3>
+                        <div class="chart-container" style="height: 350px; max-height: 350px;">
+                            <canvas id="expenseBreakdownChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="card p-6">
+                        <h3 class="text-xl font-bold mb-4">Senarai Perbelanjaan Bulanan</h3>
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full divide-y divide-gray-200">
+                                <thead class="bg-gray-50">
+                                    <tr>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Item</th>
+                                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Amaun (RM)</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="expenseTableBody" class="bg-white divide-y divide-gray-200">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="action-plan" class="mb-12">
+                <h2 class="text-2xl font-bold mb-4 text-gray-800">Pelan Tindakan Strategik</h2>
+                <p class="mb-6 text-gray-600">Anda berada di landasan yang betul. Bahagian ini menggariskan langkah-langkah seterusnya yang paling penting untuk mempercepatkan perjalanan kewangan anda. Fokus pada keutamaan ini untuk hasil yang maksimum.</p>
+                <div class="space-y-8">
+                    <div class="card p-6">
+                        <h3 class="text-xl font-bold mb-2">Keutamaan #1: Selesaikan Hutang Kad Kredit</h3>
+                        <p class="mb-4 text-gray-600">Hutang kad kredit mempunyai faedah yang tinggi. Melunaskannya adalah langkah paling bijak. Dengan lebihan tunai anda, anda boleh menyelesaikannya dengan cepat!</p>
+                        <div class="mb-2">
+                            <span class="font-semibold">Baki Hutang:</span>
+                            <span id="debtBalance">RM 0.00</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div id="debtProgressBar" class="progress-bar-inner bg-red-500" style="width: 0%;">Selesai</div>
+                        </div>
+                         <p id="debtPayoffTime" class="mt-3 text-sm font-medium text-gray-700"></p>
+                    </div>
+                    <div class="card p-6">
+                        <h3 class="text-xl font-bold mb-2">Keutamaan #2: Lengkapkan Dana Kecemasan</h3>
+                        <p class="mb-4 text-gray-600">Dana kecemasan (3-6 bulan perbelanjaan keperluan) adalah jaring keselamatan anda. Anda sudah hampir mencapai sasaran 3 bulan!</p>
+                        <div class="flex justify-between text-sm mb-1">
+                            <span class="font-semibold">Simpanan Semasa: <span id="currentSavings"></span></span>
+                            <span class="font-semibold">Sasaran: <span id="emergencyFundTarget"></span></span>
+                        </div>
+                        <div class="progress-bar">
+                            <div id="emergencyFundProgressBar" class="progress-bar-inner" style="width: 0%;"></div>
+                        </div>
+                        <p id="emergencyFundMessage" class="mt-3 text-sm font-medium text-gray-700"></p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Gemini AI Feature Section -->
+            <section id="ai-analysis">
+                <h2 class="text-2xl font-bold mb-4 text-gray-800">Analisis & Cadangan AI ✨</h2>
+                <div class="card p-6">
+                    <p class="mb-4 text-gray-600">Gunakan kuasa AI untuk mendapatkan cadangan kewangan yang diperibadikan. Klik butang di bawah untuk membiarkan Gemini menganalisis data anda dan memberikan nasihat yang boleh diambil tindakan.</p>
+                    <div class="text-center mb-4">
+                        <button id="getAiAdviceBtn" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-6 rounded-lg shadow-md transition-transform transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed">
+                            Dapatkan Nasihat AI ✨
+                        </button>
+                    </div>
+                    <div id="aiAdviceContainer" class="mt-4 p-4 bg-purple-50 rounded-lg min-h-[100px] border border-purple-200">
+                        <p class="text-center text-purple-700">Cadangan AI anda akan muncul di sini.</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Modal for updating data -->
+    <div id="updateModal" class="modal-overlay fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 hidden opacity-0">
+        <div class="modal-content bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] transform scale-95 flex flex-col">
+            <div class="p-6 border-b flex-shrink-0">
+                <h2 class="text-2xl font-bold">Kemaskini Data Anda</h2>
+            </div>
+            <div class="p-6 overflow-y-auto flex-grow">
+                <form id="financialForm">
+                    <h3 class="text-lg font-bold mb-4">Maklumat Peribadi</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                        <div>
+                            <label for="formUserName" class="block text-sm font-medium text-gray-700 mb-1">Nama Pengguna</label>
+                            <input type="text" id="formUserName" class="w-full border-gray-300 rounded-md shadow-sm">
+                        </div>
+                        <div>
+                            <label for="formUserIC" class="block text-sm font-medium text-gray-700 mb-1">No. Kad Pengenalan</label>
+                            <input type="text" id="formUserIC" class="w-full border-gray-300 rounded-md shadow-sm">
+                        </div>
+                    </div>
+                     <div class="mb-6">
+                        <label for="formUserDescription" class="block text-sm font-medium text-gray-700 mb-1">Keterangan</label>
+                        <textarea id="formUserDescription" rows="3" class="w-full border-gray-300 rounded-md shadow-sm"></textarea>
+                    </div>
+
+                    <h3 class="text-lg font-bold mb-4 border-t pt-4">Maklumat Kewangan</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                        <div>
+                            <label for="formNetIncome" class="block text-sm font-medium text-gray-700 mb-1">Pendapatan Bersih Bulanan (RM)</label>
+                            <input type="number" id="formNetIncome" class="w-full border-gray-300 rounded-md shadow-sm" step="0.01">
+                        </div>
+                        <div>
+                            <label for="formCreditCardDebt" class="block text-sm font-medium text-gray-700 mb-1">Jumlah Hutang Kad Kredit (RM)</label>
+                            <input type="number" id="formCreditCardDebt" class="w-full border-gray-300 rounded-md shadow-sm" step="0.01">
+                        </div>
+                        <div>
+                            <label for="formInitialSavings" class="block text-sm font-medium text-gray-700 mb-1">Jumlah Simpanan (Tunai) (RM)</label>
+                            <input type="number" id="formInitialSavings" class="w-full border-gray-300 rounded-md shadow-sm" step="0.01">
+                        </div>
+                         <div>
+                            <label for="formInitialInvestment" class="block text-sm font-medium text-gray-700 mb-1">Jumlah Pelaburan (RM)</label>
+                            <input type="number" id="formInitialInvestment" class="w-full border-gray-300 rounded-md shadow-sm" step="0.01">
+                        </div>
+                    </div>
+                    
+                    <h3 class="text-lg font-bold mb-4 border-t pt-4">Perbelanjaan Bulanan (RM)</h3>
+                    <div id="formExpensesContainer" class="space-y-3">
+                        <!-- Expenses will be dynamically added here -->
+                    </div>
+                    <button type="button" id="addExpenseBtn" class="mt-4 text-blue-600 hover:text-blue-800 font-semibold">+ Tambah Perbelanjaan</button>
+                </form>
+            </div>
+            <div class="p-6 bg-gray-50 border-t flex justify-end space-x-4 flex-shrink-0">
+                <button type="button" id="closeUpdateModalBtn" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg">Batal</button>
+                <button type="button" id="saveChangesBtn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">Simpan & Kemaskini</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            
+            const defaultFinancialData = {
+                userName: '',
+                userIC: '',
+                userDescription: '',
+                netIncome: 17735.60,
+                initialSavings: 24800.00,
+                initialInvestment: 31000.00,
+                creditCardDebt: 7750.00,
+                monthlyExpenses: [
+                    { item: 'Sewa', amount: 6200, category: 'Keperluan' },
+                    { item: 'Barang Dapur', amount: 1860, category: 'Keperluan' },
+                    { item: 'Pengangkutan', amount: 775, category: 'Keperluan' },
+                    { item: 'Bil (TNB, Air, etc.)', amount: 1147, category: 'Keperluan' },
+                    { item: 'Makan Luar', amount: 1240, category: 'Kehendak' },
+                    { item: 'Hiburan', amount: 775, category: 'Kehendak' },
+                    { item: 'Membeli Belah', amount: 930, category: 'Kehendak' },
+                    { item: 'Simpanan Bulanan', amount: 1550, category: 'Simpanan' },
+                    { item: 'Pelaburan Bulanan', amount: 2480, category: 'Simpanan' },
+                ]
+            };
+
+            let financialData = { ...defaultFinancialData };
+            const charts = {
+                budgetChart: null,
+                expenseChart: null
+            };
+
+            function loadData() {
+                const savedData = localStorage.getItem('financialDashboardData');
+                if (savedData) {
+                    financialData = { ...defaultFinancialData, ...JSON.parse(savedData) };
+                } else {
+                    financialData = { ...defaultFinancialData };
+                }
+                updateDashboard();
+            }
+
+            function saveData() {
+                localStorage.setItem('financialDashboardData', JSON.stringify(financialData));
+            }
+
+
+            function formatCurrency(amount) {
+                 if (typeof amount !== 'number') return 'RM 0.00';
+                return `RM ${amount.toFixed(2).replace(/\d(?=(\d{3})+\.)/g, '$&,')}`;
+            }
+            
+            function updateDashboard() {
+                if (!financialData || !financialData.monthlyExpenses) return;
+
+                // Populate user info
+                document.getElementById('displayUserName').textContent = financialData.userName || 'Tidak dinyatakan';
+                document.getElementById('displayUserIC').textContent = financialData.userIC || 'Tidak dinyatakan';
+                document.getElementById('displayUserDescription').textContent = financialData.userDescription || 'Tiada keterangan.';
+
+                const needsTotal = financialData.monthlyExpenses.filter(e => e.category === 'Keperluan').reduce((sum, e) => sum + e.amount, 0);
+                const wantsTotal = financialData.monthlyExpenses.filter(e => e.category === 'Kehendak').reduce((sum, e) => sum + e.amount, 0);
+                const savingsTotal = financialData.monthlyExpenses.filter(e => e.category === 'Simpanan').reduce((sum, e) => sum + e.amount, 0);
+                const totalExpenses = needsTotal + wantsTotal;
+                const totalOutflow = needsTotal + wantsTotal + savingsTotal;
+                const cashFlow = financialData.netIncome - totalOutflow;
+                const netWorth = financialData.initialSavings + financialData.initialInvestment - financialData.creditCardDebt;
+                
+                document.getElementById('netIncome').textContent = formatCurrency(financialData.netIncome);
+                document.getElementById('totalExpenses').textContent = formatCurrency(totalExpenses);
+                document.getElementById('cashFlow').textContent = formatCurrency(cashFlow);
+                document.getElementById('netWorth').textContent = formatCurrency(netWorth);
+                
+                updateReportCard(needsTotal, wantsTotal, savingsTotal);
+                populateExpenseTable();
+                updateActionPlan(needsTotal, wantsTotal, cashFlow);
+                initOrUpdateCharts(needsTotal, wantsTotal, savingsTotal);
+            }
+
+            function updateReportCard(needs, wants, savings) {
+                const reportCardEl = document.getElementById('financialReportCard');
+                const needsTarget = financialData.netIncome * 0.5;
+                const wantsTarget = financialData.netIncome * 0.3;
+                const savingsTarget = financialData.netIncome * 0.2;
+                let html = '';
+                if (needs > needsTarget) html += `<p>✅ <strong>Keperluan:</strong> Perbelanjaan (${formatCurrency(needs)}) sedikit melebihi sasaran 50%. Ini perkara biasa, tetapi sentiasa cari peluang berjimat.</p>`;
+                else html += `<p>🎉 <strong>Keperluan:</strong> Tahniah! Perbelanjaan (${formatCurrency(needs)}) di bawah sasaran 50%.</p>`;
+                if (wants < wantsTarget) html += `<p>🎉 <strong>Kehendak:</strong> Cemerlang! Perbelanjaan (${formatCurrency(wants)}) jauh lebih rendah daripada bajet 30%, memberi anda lebihan **${formatCurrency(wantsTarget - wants)}**!</p>`;
+                else html += `<p>✅ <strong>Kehendak:</strong> Perbelanjaan (${formatCurrency(wants)}) berada dalam bajet.</p>`;
+                if (savings > savingsTarget) html += `<p>🚀 <strong>Simpanan:</strong> Hebat! Kadar simpanan (${formatCurrency(savings)}) melebihi sasaran 20%.</p>`;
+                else html += `<p>✅ <strong>Simpanan:</strong> Kadar simpanan (${formatCurrency(savings)}) mencapai sasaran 20%.</p>`;
+                reportCardEl.innerHTML = html;
+            }
+
+            function populateExpenseTable() {
+                const tableBody = document.getElementById('expenseTableBody');
+                tableBody.innerHTML = '';
+                if (!financialData.monthlyExpenses) return;
+                financialData.monthlyExpenses.forEach(expense => {
+                    const row = `<tr><td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${expense.item}</td><td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-right">${formatCurrency(expense.amount)}</td></tr>`;
+                    tableBody.innerHTML += row;
+                });
+            }
+            
+            function updateActionPlan(needsTotal, wantsTotal, cashFlow) {
+                const wantsTarget = financialData.netIncome * 0.3;
+                const wantsSurplus = Math.max(0, wantsTarget - wantsTotal);
+                const totalSurplusForDebt = wantsSurplus + cashFlow;
+
+                document.getElementById('debtBalance').textContent = formatCurrency(financialData.creditCardDebt);
+                if (financialData.creditCardDebt > 0 && totalSurplusForDebt > 0) {
+                    const monthsToPayOffDebt = financialData.creditCardDebt / totalSurplusForDebt;
+                    document.getElementById('debtPayoffTime').textContent = `💡 Dengan lebihan tunai ${formatCurrency(totalSurplusForDebt)}/bulan, anda boleh melunaskan hutang ini dalam masa ~${Math.ceil(monthsToPayOffDebt)} bulan.`;
+                } else if (financialData.creditCardDebt <= 0) {
+                     document.getElementById('debtPayoffTime').textContent = `🎉 Tahniah! Anda bebas dari hutang kad kredit.`;
+                } else {
+                    document.getElementById('debtPayoffTime').textContent = `⚠️ Aliran tunai negatif. Sila semak semula perbelanjaan.`;
+                }
+                document.getElementById('debtProgressBar').style.width = financialData.creditCardDebt <= 0 ? '100%' : '0%';
+
+                const emergencyFundTarget = needsTotal * 3;
+                const currentSavings = financialData.initialSavings;
+                const emergencyFundProgress = Math.min(100, (currentSavings / emergencyFundTarget) * 100);
+                
+                document.getElementById('currentSavings').textContent = formatCurrency(currentSavings);
+                document.getElementById('emergencyFundTarget').textContent = formatCurrency(emergencyFundTarget);
+                
+                const progressBar = document.getElementById('emergencyFundProgressBar');
+                progressBar.style.width = `${emergencyFundProgress}%`;
+                progressBar.textContent = `${emergencyFundProgress.toFixed(0)}%`;
+                
+                if (emergencyFundProgress < 100) {
+                     document.getElementById('emergencyFundMessage').textContent = `Anda hanya perlukan ${formatCurrency(emergencyFundTarget - currentSavings)} lagi untuk mencapai sasaran.`;
+                } else {
+                     document.getElementById('emergencyFundMessage').textContent = `Tahniah! Dana kecemasan anda telah lengkap.`;
+                }
+            }
+            
+            function initOrUpdateCharts(needs, wants, savings) {
+                if (charts.budgetChart) charts.budgetChart.destroy();
+                if (charts.expenseChart) charts.expenseChart.destroy();
+                
+                const budgetCtx = document.getElementById('budgetComparisonChart').getContext('2d');
+                charts.budgetChart = new Chart(budgetCtx, {type: 'bar',data:{labels:['Keperluan','Kehendak','Simpanan'],datasets:[{label:'Sasaran Bajet',data:[financialData.netIncome*0.5,financialData.netIncome*0.3,financialData.netIncome*0.2],backgroundColor:'rgba(59, 130, 246, 0.5)',borderColor:'rgba(59, 130, 246, 1)',borderWidth:1},{label:'Perbelanjaan Sebenar',data:[needs,wants,savings],backgroundColor:'rgba(22, 163, 74, 0.7)',borderColor:'rgba(22, 163, 74, 1)',borderWidth:1}]},options:{responsive:true,maintainAspectRatio:false,scales:{y:{beginAtZero:true,ticks:{callback:v=>'RM '+v/1000+'k'}}},plugins:{tooltip:{callbacks:{label:c=>`${c.dataset.label||''}: ${formatCurrency(c.parsed.y)}`}}}}});
+                
+                const expenseCtx = document.getElementById('expenseBreakdownChart').getContext('2d');
+                charts.expenseChart = new Chart(expenseCtx, {type:'doughnut',data:{labels:['Keperluan','Kehendak','Simpanan & Pelaburan'],datasets:[{data:[needs,wants,savings],backgroundColor:['rgba(239, 68, 68, 0.7)','rgba(245, 158, 11, 0.7)','rgba(34, 197, 94, 0.7)'],borderColor:['rgba(239, 68, 68, 1)','rgba(245, 158, 11, 1)','rgba(34, 197, 94, 1)'],borderWidth:1}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top'},tooltip:{callbacks:{label:c=>{let t=c.chart.getData().datasets[0].data.reduce((a,b)=>a+b,0),p=(c.parsed/t*100).toFixed(1);return`${c.label||''}: ${formatCurrency(c.parsed)} (${p}%)`;}}}}}});
+            }
+
+            // Modal logic
+            const modal = document.getElementById('updateModal');
+            const openBtn = document.getElementById('openUpdateModalBtn');
+            const closeBtn = document.getElementById('closeUpdateModalBtn');
+            const saveBtn = document.getElementById('saveChangesBtn');
+            const addExpenseBtn = document.getElementById('addExpenseBtn');
+            const expensesContainer = document.getElementById('formExpensesContainer');
+
+            function openModal() {
+                populateForm();
+                modal.classList.remove('hidden');
+                setTimeout(() => {
+                    modal.classList.remove('opacity-0');
+                    if (modal.querySelector('.modal-content')) {
+                        modal.querySelector('.modal-content').classList.remove('scale-95');
+                    }
+                }, 10);
+            }
+
+            function closeModal() {
+                modal.classList.add('opacity-0');
+                if (modal.querySelector('.modal-content')) {
+                    modal.querySelector('.modal-content').classList.add('scale-95');
+                }
+                setTimeout(() => modal.classList.add('hidden'), 300);
+            }
+            
+            function populateForm() {
+                document.getElementById('formUserName').value = financialData.userName || '';
+                document.getElementById('formUserIC').value = financialData.userIC || '';
+                document.getElementById('formUserDescription').value = financialData.userDescription || '';
+                document.getElementById('formNetIncome').value = financialData.netIncome;
+                document.getElementById('formCreditCardDebt').value = financialData.creditCardDebt;
+                document.getElementById('formInitialSavings').value = financialData.initialSavings;
+                document.getElementById('formInitialInvestment').value = financialData.initialInvestment;
+                
+                expensesContainer.innerHTML = '';
+                financialData.monthlyExpenses.forEach((exp, index) => {
+                    addExpenseRow(exp.item, exp.amount, exp.category, index);
+                });
+            }
+            
+            function addExpenseRow(item='', amount='', category='Keperluan', index) {
+                const row = document.createElement('div');
+                row.className = 'grid grid-cols-12 gap-2 items-center expense-row';
+                row.innerHTML = `
+                    <div class="col-span-4"><input type="text" placeholder="Item" value="${item}" class="w-full border-gray-300 rounded-md shadow-sm expense-item"></div>
+                    <div class="col-span-3"><input type="number" placeholder="Amaun" value="${amount}" class="w-full border-gray-300 rounded-md shadow-sm expense-amount" step="0.01"></div>
+                    <div class="col-span-4">
+                        <select class="w-full border-gray-300 rounded-md shadow-sm expense-category">
+                            <option value="Keperluan" ${category === 'Keperluan' ? 'selected' : ''}>Keperluan</option>
+                            <option value="Kehendak" ${category === 'Kehendak' ? 'selected' : ''}>Kehendak</option>
+                            <option value="Simpanan" ${category === 'Simpanan' ? 'selected' : ''}>Simpanan</option>
+                        </select>
+                    </div>
+                    <div class="col-span-1 text-right">
+                        <button type="button" class="text-red-500 hover:text-red-700 remove-expense-btn">&times;</button>
+                    </div>
+                `;
+                expensesContainer.appendChild(row);
+                row.querySelector('.remove-expense-btn').addEventListener('click', () => row.remove());
+            }
+
+            function handleSaveChanges() {
+                financialData.userName = document.getElementById('formUserName').value || '';
+                financialData.userIC = document.getElementById('formUserIC').value || '';
+                financialData.userDescription = document.getElementById('formUserDescription').value || '';
+                financialData.netIncome = parseFloat(document.getElementById('formNetIncome').value) || 0;
+                financialData.creditCardDebt = parseFloat(document.getElementById('formCreditCardDebt').value) || 0;
+                financialData.initialSavings = parseFloat(document.getElementById('formInitialSavings').value) || 0;
+                financialData.initialInvestment = parseFloat(document.getElementById('formInitialInvestment').value) || 0;
+                
+                const newExpenses = [];
+                document.querySelectorAll('.expense-row').forEach(row => {
+                    const item = row.querySelector('.expense-item').value;
+                    const amount = parseFloat(row.querySelector('.expense-amount').value);
+                    const category = row.querySelector('.expense-category').value;
+                    if(item && amount > 0) {
+                        newExpenses.push({ item, amount, category });
+                    }
+                });
+                financialData.monthlyExpenses = newExpenses;
+                
+                saveData();
+                updateDashboard();
+                closeModal();
+            }
+
+            // Gemini AI Feature
+            const getAiAdviceBtn = document.getElementById('getAiAdviceBtn');
+            const aiAdviceContainer = document.getElementById('aiAdviceContainer');
+
+            async function getAiAdvice() {
+                getAiAdviceBtn.disabled = true;
+                aiAdviceContainer.innerHTML = '<div class="loader"></div>';
+
+                const needsTotal = financialData.monthlyExpenses.filter(e => e.category === 'Keperluan').reduce((sum, e) => sum + e.amount, 0);
+                const wantsTotal = financialData.monthlyExpenses.filter(e => e.category === 'Kehendak').reduce((sum, e) => sum + e.amount, 0);
+                const savingsTotal = financialData.monthlyExpenses.filter(e => e.category === 'Simpanan').reduce((sum, e) => sum + e.amount, 0);
+
+                const prompt = `Anda ialah seorang penasihat kewangan peribadi yang pakar. Berdasarkan data kewangan berikut untuk seorang pengguna di Malaysia (angka dalam RM), berikan 3 cadangan utama yang praktikal dan boleh diambil tindakan segera untuk memperbaiki kesihatan kewangan mereka. Fokus pada langkah seterusnya yang paling berkesan berdasarkan situasi mereka. Pastikan nada anda memberi semangat dan membantu. Formatkan jawapan anda dalam HTML dengan senarai tidak berurutan. Jangan sertakan tajuk utama, hanya senarai itu sahaja.
+
+Data Kewangan:
+- Nama: ${financialData.userName || 'Tidak dinyatakan'}
+- Pendapatan Bulanan: ${formatCurrency(financialData.netIncome)}
+- Perbelanjaan Keperluan Bulanan: ${formatCurrency(needsTotal)}
+- Perbelanjaan Kehendak Bulanan: ${formatCurrency(wantsTotal)}
+- Jumlah Simpanan & Pelaburan Bulanan: ${formatCurrency(savingsTotal)}
+- Jumlah Hutang Kad Kredit: ${formatCurrency(financialData.creditCardDebt)}
+- Jumlah Simpanan Sedia Ada (Tunai): ${formatCurrency(financialData.initialSavings)}
+- Jumlah Pelaburan Sedia Ada: ${formatCurrency(financialData.initialInvestment)}`;
+                
+                let chatHistory = [{ role: "user", parts: [{ text: prompt }] }];
+                const payload = { contents: chatHistory };
+                const apiKey = ""; // API key will be provided by the environment
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`Ralat API: ${response.statusText}`);
+                    }
+                    
+                    const result = await response.json();
+                    
+                    if (result.candidates && result.candidates.length > 0 &&
+                        result.candidates[0].content && result.candidates[0].content.parts &&
+                        result.candidates[0].content.parts.length > 0) {
+                        const text = result.candidates[0].content.parts[0].text;
+                        aiAdviceContainer.innerHTML = text;
+                    } else {
+                        throw new Error("Struktur respons tidak dijangka atau kandungan tiada.");
+                    }
+                } catch (error) {
+                    console.error("Ralat mendapatkan nasihat AI:", error);
+                    aiAdviceContainer.innerHTML = `<p class="text-red-600 text-center">Maaf, terdapat masalah untuk mendapatkan cadangan AI. Sila cuba lagi sebentar lagi.</p>`;
+                } finally {
+                    getAiAdviceBtn.disabled = false;
+                }
+            }
+            
+            // PDF and CSV Download functions
+            const downloadPdfBtn = document.getElementById('downloadPdfBtn');
+            const downloadCsvBtn = document.getElementById('downloadCsvBtn');
+
+            downloadPdfBtn.addEventListener('click', () => {
+                const { jsPDF } = window.jspdf;
+                const content = document.getElementById('main-content');
+                
+                html2canvas(content, { 
+                    scale: 2,
+                    useCORS: true, 
+                    logging: false,
+                    onclone: (document) => {
+                        // Ensure charts are rendered correctly before capture
+                        Chart.helpers.each(Chart.instances, function(instance){
+                           instance.options.animation = false;
+                        });
+                    }
+                }).then(canvas => {
+                    const imgData = canvas.toDataURL('image/png');
+                    const pdf = new jsPDF('p', 'mm', 'a4');
+                    const pdfWidth = pdf.internal.pageSize.getWidth();
+                    const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+                    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+                    pdf.save("laporan-kewangan.pdf");
+                });
+            });
+
+            downloadCsvBtn.addEventListener('click', () => {
+                let csvContent = "data:text/csv;charset=utf-8,";
+                csvContent += "Item,Amaun (RM),Kategori\r\n";
+
+                financialData.monthlyExpenses.forEach(row => {
+                    csvContent += `${row.item},${row.amount},${row.category}\r\n`;
+                });
+
+                const encodedUri = encodeURI(csvContent);
+                const link = document.createElement("a");
+                link.setAttribute("href", encodedUri);
+                link.setAttribute("download", "perbelanjaan_bulanan.csv");
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            });
+
+
+            openBtn.addEventListener('click', openModal);
+            closeBtn.addEventListener('click', closeModal);
+            saveBtn.addEventListener('click', handleSaveChanges);
+            addExpenseBtn.addEventListener('click', () => addExpenseRow());
+            getAiAdviceBtn.addEventListener('click', getAiAdvice);
+
+            // Initial Load
+            loadData();
+        });
+    </script>
+</body>
+</html>
